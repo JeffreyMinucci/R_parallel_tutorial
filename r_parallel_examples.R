@@ -5,7 +5,7 @@
 # by: Jeff Minucci
 #
 #######
-
+library(boot)
 
 #First load the necessary library 
 library(doParallel)
@@ -72,25 +72,61 @@ time
 
 #We will use the 'iris' example dataset
 data(iris)
-iris <- droplevels(iris[iris$Species != "setosa",]) #using only two species (binomial classification problem)
+iris <- droplevels(iris[iris$Species != "setosa",c(1,5)]) #using only two species (binomial classification problem)
 head(iris)
 summary(iris$Species)
 
 
+
 #Let's fit a logistc regression to this data to predict the species of iris based on its flower shape
-fit <- glm(Species ~ ., data=iris, family=binomial(logit))
+fit <- glm(iris[,2]~iris[,1], family=binomial(logit))
 summary(fit)
 
 #And plot a significant effect
-plot(iris$Petal.Length, as.numeric(iris$Species)-1,pch=16,xlab="Petal length",ylab="Probability of virginica")
-lengths <- seq(3,7,by=0.01)
-newdata <- data.frame(Sepal.Length = mean(iris$Sepal.Length),Sepal.Width = mean(iris$Sepal.Width), 
-                      Petal.Length = lengths, Petal.Width = mean(iris$Petal.Width))
-spp_predict <- predict(fit,newdata,type="response")
+plot(iris[,1], as.numeric(iris[,2])-1,pch=16,xlab="Sepal Length",ylab="Probability of virginica")
+lengths <- seq(4,9,by=0.01)
+spp_predict <- inv.logit(lengths*coefficients(fit)[2] + coefficients(fit)[1])
 lines(lengths,spp_predict,lwd=3,col="black")
 
-#Now let's "bootstap" some 95% confidence intervals by sampling our data 100 times and fitting the same function
-#Note: bootstapping involves randomly resampling the data with replacement 
+
+
+#Now let's "bootstap" some 95% confidence intervals by sampling our data 10k times and fitting the same function. 
+#Then we can calculate 2.5th and 97.5th percentile for our 'petal length' effect/
+
+time <- system.time({
+  nsims <- 10000
+  x <- foreach(i=1:nsims, .combine=rbind) %dopar% {
+    boot_sam <- sample(100,100,replace=T) #randomly sample 100 row #s out of our 100 row dataset (with replacement)
+    boot_fit <- glm(iris[boot_sam,2]~iris[boot_sam,1], family=binomial(logit))
+    coefficients(boot_fit)
+  }
+})[3]
+time
+
+#compare to time for non-parallel:
+time <- system.time({
+  nsims <- 10000
+  x <- foreach(i=1:nsims, .combine=rbind) %do% {
+    boot_sam <- sample(100,100,replace=T) #randomly sample 100 row #s out of our 100 row dataset (with replacement)
+    boot_fit <- glm(iris[boot_sam,2]~iris[boot_sam,1], family=binomial(logit))
+    coefficients(boot_fit)
+  }
+})[3]
+time
 
 
 
+#Plot bootsrapped 95% confidence intervals
+hist(x[,2])
+CIs <- quantile(x[,2],c(.025,.975))
+plot(iris[,1], as.numeric(iris[,2])-1,pch=16,xlab="Sepal length",ylab="Probability of virginica")
+lengths <- seq(3,9,by=0.01)
+spp_predict <- inv.logit(lengths*coefficients(fit)[2] + coefficients(fit)[1])
+low_predict <-  inv.logit(lengths*CIs[1] + coefficients(fit)[1])
+up_predict <-  inv.logit(lengths*CIs[2] + coefficients(fit)[1])
+lines(lengths,spp_predict,lwd=3,col="black")
+lines(lengths,low_predict,lwd=3,col="grey",lty=4)
+lines(lengths,up_predict,lwd=3,col="grey",lty=4)
+
+
+results <- boot(data=iris,statistic)
