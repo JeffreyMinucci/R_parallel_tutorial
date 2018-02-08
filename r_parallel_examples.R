@@ -4,11 +4,18 @@
 #
 # by: Jeff Minucci
 #
+# url for presentation:
+# https://docs.google.com/presentation/d/1bQqkLZwqrzz3u_SKeRW7Yzn3ap6jNWr_UwMwPSbPIyM/edit?usp=sharing
+#
 #######
-library(boot)
+
+
 
 #First load the necessary library 
 library(doParallel)
+
+#Check how many cores are available
+detectCores()
 
 #Start a cluster (Windows)
 c1 <- makeCluster(4)
@@ -38,8 +45,9 @@ time <- system.time({
 time
 
 
-#Another example, this time using 'cbind' as the combine function
-x <- foreach(i=1:10, .combine='cbind') %do% rnorm(4)
+
+#Another example, this time using 'cbind' as the combine function. We can also iterate through multiple vectors.
+x <- foreach(i=1:10,b=51:60, .combine='cbind') %do% rnorm(4,b,i)
 x
 
 
@@ -63,6 +71,42 @@ time <- system.time({
   result <- sqrt(1:10^4)
 })[3]
 time
+
+
+#Other useful inputs to foreach
+
+# .packages = c("randomForest","mcmc")  - load packages on each core
+# .export = c("x","nsims") - export these variables or functions to each core
+#
+# On the topic of .export...
+#
+# foreach will automatically export variables in the local environment to each core, but will NOT export the global environment. 
+#
+# So this will fail:
+
+base <- 2
+
+test <- function (exponent) {
+  foreach(exponent = 2:4, 
+          .combine = c)  %dopar%  
+    base^exponent
+}
+test()
+
+# ...because 'base' is not defined within the function's local environment
+
+
+# But we can tell foreach to export the variable we need to all of the cores:
+
+
+base <- 2
+
+test <- function (exponent) {
+  foreach(exponent = 2:4, .export = c("base"),
+          .combine = c)  %dopar%  
+    base^exponent
+}
+test()
 
 
 ########################
@@ -129,4 +173,7 @@ lines(lengths,low_predict,lwd=3,col="grey",lty=4)
 lines(lengths,up_predict,lwd=3,col="grey",lty=4)
 
 
-results <- boot(data=iris,statistic)
+
+###### When you are done call this (or just terminate R)
+stopCluster(c1)
+registerDoParallel()
